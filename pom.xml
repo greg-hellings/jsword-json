@@ -39,6 +39,8 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<configuration>
 					<debug>true></debug>
+					<source>1.5</source>
+					<target>1.5</target>
 				</configuration>
 			</plugin>
 
