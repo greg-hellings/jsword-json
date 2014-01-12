@@ -1,10 +1,11 @@
 package jacknife;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.crosswire.jsword.book.Book;
-import org.crosswire.jsword.book.BookCategory;
 import org.crosswire.jsword.book.BookData;
 import org.crosswire.jsword.book.BookException;
 import org.crosswire.jsword.book.Books;
@@ -28,6 +29,8 @@ import io.undertow.websockets.spi.WebSocketHttpExchange;
 public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 	
 	private HttpServerExchange exchange;
+	private static Map<Book, List<String>> sections = new HashMap<Book, List<String>>();
+	private static Map<Book, Map<Key, String>> entries = new HashMap<Book, Map<Key,String>>();
 	
 	/*
 	 * HELPERS
@@ -138,10 +141,14 @@ public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 	private String listSections(String module) throws BookException, NoSuchKeyException {
 		Book   book   = this.getBook(module);
 		JSONObject response = new JSONObject();
-		List<String> refList = new ArrayList<String>();
+		List<String> refList = null;
 		JSONArray refArray;
 		
-		if (book != null) {
+		if (SwordHandler.sections.containsKey(book)) {
+			refList = SwordHandler.sections.get(book);
+			refArray = new JSONArray(refList);
+		} else if (book != null) {
+			refList = new ArrayList<String>();
 			Key allKeys = book.getGlobalKeyList();
 			// Iterate all keys, pulling out unique top-level keys
 			for (Key ref : allKeys) {
@@ -152,17 +159,20 @@ public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 					refList.add(refParts[0]);
 				}
 			}
-			// Insert results to the response object
-			if (refList.size() != 0) {
-				refArray = new JSONArray(refList);
-				response.put("success", true);
-				response.put("references", refArray);
-				response.put("message", "Append one of these references to your URL path to retrive its contents.");
-			} else {
-				this.handleError("No top-level references found.");
-			}
+			SwordHandler.sections.put(book, refList);
 		} else {
 			this.handleError("No such book found.");
+			return "";
+		}
+		
+		// Insert results to the response object
+		if (refList.size() != 0) {
+			refArray = new JSONArray(refList);
+			response.put("success", true);
+			response.put("references", refArray);
+			response.put("message", "Append one of these references to your URL path to retrive its contents.");
+		} else {
+			this.handleError("No top-level references found.");
 		}
 		
 		return response.toString();
