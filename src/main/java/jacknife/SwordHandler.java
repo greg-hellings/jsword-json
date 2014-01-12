@@ -30,7 +30,7 @@ public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 	
 	private HttpServerExchange exchange;
 	private static Map<Book, List<String>> sections = new HashMap<Book, List<String>>();
-	private static Map<Book, Map<Key, String>> entries = new HashMap<Book, Map<Key,String>>();
+	private static Map<Book, Map<String, String>> entries = new HashMap<Book, Map<String,String>>();
 	
 	/*
 	 * HELPERS
@@ -125,7 +125,18 @@ public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 		Book book = this.getBook(module);
 		JSONArray verses = new JSONArray();
 		Key baseKey = book.getKey(reference);
-		
+		String result;
+		// Check application cache
+		Map <String, String> bookEntries;
+		if (SwordHandler.entries.containsKey(book)) {
+			bookEntries = SwordHandler.entries.get(book);
+		} else {
+			bookEntries = new HashMap<String, String>();
+		}
+		if (bookEntries.containsKey(baseKey.getOsisID())) {
+			return bookEntries.get(baseKey.getOsisID());
+		}
+		// Generate results
 		for (Key key : baseKey) {
 			BookData data = new BookData(book, key);
 			JSONObject entry = new JSONObject();
@@ -134,8 +145,13 @@ public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 			entry.put("text", OSISUtil.getCanonicalText(data.getOsisFragment()));
 			verses.put(entry);
 		}
-		
-		return verses.toString();
+		// Fill cache
+		result = verses.toString();
+		bookEntries.put(baseKey.getOsisID(), result);
+		if(!SwordHandler.entries.containsKey(book)) {
+			SwordHandler.entries.put(book, bookEntries);
+		}
+		return result;
 	}
 	
 	private String listSections(String module) throws BookException, NoSuchKeyException {
