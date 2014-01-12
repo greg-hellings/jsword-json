@@ -1,0 +1,20 @@
+To run you must have
+
+1. Maven built
+2. JSword (http://www.crosswire.org/jsword) built and installed to your local Maven repository
+
+To build and deploy, simply
+
+1. mvn package
+2. java -jar target/jacknife-<version>.jar (the origin-jacknife-<version>.jar does not have
+all the dependencies bundled)
+
+To connect via REST-like services, just point your favorite HTTP client to
+http://<host>:10001/ for a list of installed SWORD modules. To get specific top-level key values,
+append the module ID to the path. E.g. http://<host>:10001/KJV/. To get a specific set of values
+printed out, try http://<host>:10001/KJV/Isaiah.1 in order to retrieve all of the first chapter
+of Isaiah in JSON format.
+
+To connect to WebSockets, open a connection to ws://<host>:10002/. Send any blank message to retrieve
+a list of modules. Send a message in the form {"module":"KJV"} to get a list of available top-level
+values. Send a message such as {"module":"KJV","key":"John"} to retrieve the entire gospel of John.
