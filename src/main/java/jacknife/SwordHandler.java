@@ -12,49 +12,118 @@ import org.crosswire.jsword.book.OSISUtil;
 import org.crosswire.jsword.passage.Key;
 import org.crosswire.jsword.passage.NoSuchKeyException;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
+import io.undertow.websockets.WebSocketConnectionCallback;
+import io.undertow.websockets.core.AbstractReceiveListener;
+import io.undertow.websockets.core.BufferedTextMessage;
+import io.undertow.websockets.core.WebSocketChannel;
+import io.undertow.websockets.core.WebSockets;
+import io.undertow.websockets.spi.WebSocketHttpExchange;
 
-public class SwordHandler implements HttpHandler {
+public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 	
-	private void handleError(String message, HttpServerExchange exchange) {
+	private HttpServerExchange exchange;
+	
+	/*
+	 * HELPERS
+	 */
+	private void handleError(String message) {
 		JSONObject response = new JSONObject();
 		response.put("success", false);
 		response.put("message", message);
-		exchange.setResponseCode(500);
-		exchange.getResponseSender().send(response.toString());
+		this.exchange.setResponseCode(500);
+		this.exchange.getResponseSender().send(response.toString());
 	}
 
+	private Book getBook(String name) {
+		Books books = Books.installed();
+		return books.getBook(name);
+	}
+
+	/*
+	 * Raw HTTP handler
+	 * 
+	 * @see io.undertow.server.HttpHandler#handleRequest(io.undertow.server.HttpServerExchange)
+	 */
 	public void handleRequest(HttpServerExchange exchange) throws Exception {
+		this.exchange = exchange;
 		String path = exchange.getRequestPath();
+		String response;
 		
 		exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
 		if (path.equals("/")) {
-			this.listModules(exchange);
+			response = this.listModules();
 		} else {
 			String[] parts = path.split("/");
 			try {
 				if(parts.length == 2) {
-					this.listSections(parts, exchange);
+					response = this.listSections(parts[1]);
 				} else {
-					this.listEntries(parts, exchange);
+					response = this.listEntries(parts[1], parts[2]);
 				}
 			} catch(NoSuchKeyException ex) {
-				this.handleError("It looks like you requested an invalid module key.", exchange);
+				this.handleError("It looks like you requested an invalid module key.");
+				ex.printStackTrace();
+				return;
 			} catch(BookException ex) {
-				this.handleError("It looks like you requested a module that is not installed.", exchange);
+				this.handleError("It looks like you requested a module that is not installed.");
+				return;
 			}
 		}
+		
+		exchange.getResponseSender().send(response);
 	}
 
-	private void listEntries(String[] parts, HttpServerExchange exchange) throws NoSuchKeyException, BookException {
-		Book book = this.getBook(parts[1]);
+	/*
+	 * WebSocket handler
+	 * 
+	 * @see io.undertow.websockets.WebSocketConnectionCallback#onConnect(io.undertow.websockets.spi.WebSocketHttpExchange, io.undertow.websockets.core.WebSocketChannel)
+	 */
+	public void onConnect(WebSocketHttpExchange exchange,
+			WebSocketChannel channel) {
+		channel.getReceiveSetter().set(new AbstractReceiveListener() {
+			@Override
+			public void onFullTextMessage(WebSocketChannel channel, BufferedTextMessage message) {
+				JSONObject request = new JSONObject(message.getData());
+				
+				try {
+					if (!request.has("module")) {
+						WebSockets.sendText(listModules(), channel, null);
+					} else if(!request.has("key")) {
+						WebSockets.sendText(listSections(request.getString("module")), channel, null);
+					} else {
+						WebSockets.sendText(listEntries(request.getString("module"), request.getString("key")), channel, null);
+					}
+				} catch(BookException e) {
+					JSONObject response = new JSONObject();
+					response.put("success", false);
+					response.put("message", "It appears you have selected an invalid module.");
+					WebSockets.sendText(response.toString(), channel, null);
+				} catch (NoSuchKeyException e) {
+					JSONObject response = new JSONObject();
+					response.put("success", false);
+					response.put("message", "You have requested an invalid key.");
+					WebSockets.sendText(response.toString(), channel, null);
+				} catch (JSONException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		});
+		channel.resumeReceives();
+	}
+
+	private String listEntries(String module, String reference) throws NoSuchKeyException, BookException {
+		Book book = this.getBook(module);
 		JSONArray verses = new JSONArray();
+		Key baseKey = book.getKey(reference);
 		
-		for (Key key : book.getKey(parts[2])) {
+		for (Key key : baseKey) {
 			BookData data = new BookData(book, key);
 			JSONObject entry = new JSONObject();
 			
@@ -63,16 +132,11 @@ public class SwordHandler implements HttpHandler {
 			verses.put(entry);
 		}
 		
-		exchange.getResponseSender().send(verses.toString());
-	}
-
-	private Book getBook(String name) {
-		Books books = Books.installed();
-		return books.getBook(name);
+		return verses.toString();
 	}
 	
-	private void listSections(String[] parts, HttpServerExchange exchange) throws BookException, NoSuchKeyException {
-		Book   book   = this.getBook(parts[1]);
+	private String listSections(String module) throws BookException, NoSuchKeyException {
+		Book   book   = this.getBook(module);
 		JSONObject response = new JSONObject();
 		List<String> refList = new ArrayList<String>();
 		JSONArray refArray;
@@ -95,16 +159,16 @@ public class SwordHandler implements HttpHandler {
 				response.put("references", refArray);
 				response.put("message", "Append one of these references to your URL path to retrive its contents.");
 			} else {
-				this.handleError("No top-level references found.", exchange);
+				this.handleError("No top-level references found.");
 			}
 		} else {
-			this.handleError("No such book found.", exchange);
+			this.handleError("No such book found.");
 		}
 		
-		exchange.getResponseSender().send(response.toString());
+		return response.toString();
 	}
 
-	private void listModules(HttpServerExchange exchange) {
+	private String listModules() {
 		JSONObject object = new JSONObject();
 		JSONArray  modules = new JSONArray();
 		JSONObject module;
@@ -122,7 +186,7 @@ public class SwordHandler implements HttpHandler {
 		object.put("modules", modules);
 		object.put("directions", "Select a module's key to get a listing of its core elements.");
 		
-		exchange.getResponseSender().send(object.toString());
+		return object.toString();
 	}
 
 }
