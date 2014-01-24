@@ -16,6 +16,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import templates.Demo;
 import io.undertow.server.HttpHandler;
 import io.undertow.server.HttpServerExchange;
 import io.undertow.util.Headers;
@@ -58,10 +59,16 @@ public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 		String path = exchange.getRequestPath();
 		String response;
 		
-		exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
-		if (path.equals("/")) {
+		
+		if (path.equals("/demo")) {
+			exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/html");
+			Demo demo = new Demo();
+			response = demo.makeRenderer().asString();
+		} else if (path.equals("/")) {
+			exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
 			response = this.listModules();
 		} else {
+			exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
 			String[] parts = path.split("/");
 			try {
 				if(parts.length == 2) {

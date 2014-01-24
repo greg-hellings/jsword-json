@@ -5,22 +5,31 @@
 	<artifactId>jacknife</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 
-	<repositories>
-		<repository>
-			<releases>
-				<enabled>true</enabled>
-				<updatePolicy>always</updatePolicy>
-				<checksumPolicy>warn</checksumPolicy>
-			</releases>
-			<id>crosswire.public</id>
-			<name>Codehaus Public Repo</name>
-			<url>http://crosswire.org/mvn/content/groups/public/</url>
-			<layout>default</layout>
-		</repository>
-	</repositories>
-
 	<build>
+		<resources>
+			<resource>
+				<directory>src/main/jamon-gen</directory>
+			</resource>
+		</resources>
+		
 		<plugins>
+			<!--  plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>1.2.1</version>
+				<executions>
+					<execution>
+						<phase>test</phase>
+						<goals>
+							<goal>java</goal>
+						</goals>
+						<configuration>
+							<mainClass>jacknife.Main</mainClass>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin -->
+			
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-jar-plugin</artifactId>
@@ -38,9 +47,9 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<configuration>
-					<debug>true></debug>
-					<source>1.5</source>
-					<target>1.5</target>
+					<debug>true</debug>
+					<source>1.6</source>
+					<target>1.6</target>
 				</configuration>
 			</plugin>
 
@@ -64,6 +73,24 @@
 					</execution>
 				</executions>
 			</plugin>
+			
+			<plugin>
+				<groupId>org.jamon</groupId>
+				<artifactId>jamon-maven-plugin</artifactId>
+				<version>2.4.2</version>
+				<executions>
+					<execution>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>translate</goal>
+						</goals>
+						<configuration>
+							<templateSourceDir>src/main/jamon/</templateSourceDir>
+							<templateOutputDir>src/main/jamon-gen/</templateOutputDir>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 
@@ -82,6 +109,11 @@
 			<groupId>io.undertow</groupId>
 			<artifactId>undertow-core</artifactId>
 			<version>1.0.0.Beta31</version>
+		</dependency>
+		<dependency>
+			<groupId>org.jamon</groupId>
+			<artifactId>jamon-runtime</artifactId>
+			<version>2.4.1</version>
 		</dependency>
 	</dependencies>
 </project>

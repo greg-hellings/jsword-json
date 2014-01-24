@@ -5,6 +5,11 @@
   <artifactId>jacknife</artifactId>
   <version>0.0.1-SNAPSHOT</version>
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/jamon-gen</directory>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <artifactId>maven-jar-plugin</artifactId>
@@ -20,9 +25,9 @@
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <configuration>
-          <debug>true&gt;</debug>
-          <source>1.5</source>
-          <target>1.5</target>
+          <debug>true</debug>
+          <source>1.6</source>
+          <target>1.6</target>
         </configuration>
       </plugin>
       <plugin>
@@ -44,18 +49,24 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.jamon</groupId>
+        <artifactId>jamon-maven-plugin</artifactId>
+        <version>2.4.2</version>
+        <executions>
+          <execution>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>translate</goal>
+            </goals>
+            <configuration>
+              <templateSourceDir>src/main/jamon/</templateSourceDir>
+              <templateOutputDir>src/main/jamon-gen/</templateOutputDir>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
-  <repositories>
-    <repository>
-      <releases>
-        <updatePolicy>always</updatePolicy>
-        <checksumPolicy>warn</checksumPolicy>
-      </releases>
-      <id>crosswire.public</id>
-      <name>Codehaus Public Repo</name>
-      <url>http://crosswire.org/mvn/content/groups/public/</url>
-    </repository>
-  </repositories>
 </project>
 

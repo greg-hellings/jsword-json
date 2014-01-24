@@ -1,0 +1,63 @@
+<html>
+	<head>
+		<title>Demo</title>
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+		<script type="text/javascript">
+		jQuery(function() {
+			var socket,
+			    useSockets,
+			    listModules;
+			if (!('WebSocket' in window)) {
+				jQuery('#socket').disable();
+			} else {
+				jQuery('#results').text('Congratulations, you have WebSocket!');
+				socket = new WebSocket('ws://' + window.location.hostname + ':10002/');
+			}
+			
+			useSockets = function() {
+				if (jQuery('input[name=source]:checked').val() == 'socket') {
+					return true;
+				}
+				return false;
+			};
+			
+			/**
+			 * Get module list.
+			 */
+			listModules = function(result) {
+				var resultBox = jQuery('#results');
+				resultBox.text('');
+				jQuery.each(result.modules, function(index, module) {
+					resultBox.html(resultBox.html() + '<br /> ' + module.name);
+				});
+			};
+			jQuery('#listModules').on('click', function() {
+				if (useSockets()) {
+					socket.onmessage = function(result) {
+						result = JSON.parse(result.data);
+						listModules(result);
+					}
+					socket.send(JSON.stringify({request:'modulelist'}));
+				} else {
+					jQuery.getJSON('/', function(result) {
+						listModules(result);
+					});
+				}
+			});
+		});</script>
+	</head>
+	<body>
+		<h3>Select the transport to use</h3>
+		<input type="radio" name="source" value="REST" id="REST" />
+		<label for="REST">REST</label>
+		
+		<input type="radio" name="source" value="socket" id="socket" />
+		<label for="socket">WebSocket</label>
+		
+		<br />
+		<input type="button" name="listModules" id="listModules" value="List Modules" />
+		
+		<br />
+		<div id="results"></div>
+	</body>
+</html>
