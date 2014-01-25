@@ -6,13 +6,36 @@
 		jQuery(function() {
 			var socket,
 			    useSockets,
-			    listModules;
+			    listModules,
+			    listSections,
+			    resultBox = jQuery('#results'),
+			    importAll,
+			    importOne,
+			    storeData,
+			    status = jQuery('#status'),
+			    updateModuleList;
 			if (!('WebSocket' in window)) {
 				jQuery('#socket').disable();
 			} else {
 				jQuery('#results').text('Congratulations, you have WebSocket!');
 				socket = new WebSocket('ws://' + window.location.hostname + ':10002/');
 			}
+			
+			// Some normalization
+			window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+			if (!('indexedDB' in window)) {
+				resultBox.html(resultBox.html() + '<br />IndexedDB not present. You can\'t import the modules.');
+			}
+			
+			// List existing modules
+			updateModuleList = function() {
+				var modules = JSON.parse(localStorage.getItem('modules') || '[]');
+				jQuery('#moduleList').html('<option></option><option>' + modules.join('</option><option>') + '</option>');
+				jQuery('#section').html('');
+				jQuery('#key').html('');
+				jQuery('#text').html('');
+			};
+			updateModuleList();
 			
 			useSockets = function() {
 				if (jQuery('input[name=source]:checked').val() == 'socket') {
@@ -21,28 +44,197 @@
 				return false;
 			};
 			
+			/********************************************************************************************************************
+			 *************************************** READING FROM SERVER ********************************************************
+			 ********************************************************************************************************************/
 			/**
 			 * Get module list.
 			 */
 			listModules = function(result) {
-				var resultBox = jQuery('#results');
+				var links = [];
 				resultBox.text('');
 				jQuery.each(result.modules, function(index, module) {
-					resultBox.html(resultBox.html() + '<br /> ' + module.name);
+					links.push('<a class="module" data-key="' + module.key + '" href="#">' + module.name + '</a>');
 				});
+				resultBox.html(links.join('<br />'));
+				status.hide();
 			};
 			jQuery('#listModules').on('click', function() {
+				status.show().text('Fetching module list');
 				if (useSockets()) {
 					socket.onmessage = function(result) {
 						result = JSON.parse(result.data);
 						listModules(result);
-					}
+					};
 					socket.send(JSON.stringify({request:'modulelist'}));
 				} else {
-					jQuery.getJSON('/', function(result) {
-						listModules(result);
+					jQuery.getJSON('/', listModules);
+				}
+			});
+			
+			/**
+			 * Get section/book list.
+			 */
+			listSections = function(result) {
+				var links = [];
+				resultBox.text('');
+				jQuery.each(result.references, function(index, reference) {
+					links.push('<a class="reference" data-key="' + result.module + '/' + reference + '" href="#">' + reference + '</a>');
+				});
+				resultBox.html('Click a link to import that section.<br />' +
+				               'Click <a class="import" href="#">here</a> to import the entire work.<br />' +
+							   links.join('<br />'));
+				status.hide();
+			};
+			jQuery(document).on('click', 'a.module', function(click) {
+				var key = jQuery(this).attr('data-key');
+				status.show().text('Fetching section list');
+				if (useSockets()) {
+					socket.onmessage = function(result) {
+						result = JSON.parse(result.data);
+						listSections(result);
+					};
+					socket.send(JSON.stringify({module:key}));
+				} else {
+					jQuery.getJSON('/' + key, listSections);
+				}
+			});
+			
+			/**
+			 * Import requested section.
+			 */
+			storeData = function(items, store) {
+				jQuery.each(items, function(index, item) {
+					store.add(item);
+				});
+			};
+			importOne = function(result) {
+				var db,
+				    dbRequest = indexedDB.open(result.module, 1);
+				
+				dbRequest.onupgradeneeded = function(upgradeEvent) {
+					var upgradeDB = upgradeEvent.target.result,
+					    store     = upgradeDB.createObjectStore('entries', {keyPath: 'reference'}),
+					    modules   = JSON.parse(localStorage.getItem('modules') || '[]');
+					store.transaction.oncomplete = function(createEvent) {
+						storeData(result.entries, upgradeDB.transaction('entries', 'readwrite').objectStore('entries'));
+					};
+					modules.push(result.module);
+					localStorage['modules'] = JSON.stringify(modules);
+				};
+				dbRequest.onsuccess = function(openEvent) {
+					db = dbRequest.result;
+					storeData(result.entries, db.transaction('entries', 'readwrite').objectStore('entries'));
+				};
+				updateModuleList();
+				status.text(status.text() + ' ' + result.reference);
+			};
+			// One at a time
+			jQuery(document).on('click', 'a.reference', function(click) {
+				var reference = jQuery(this).attr('data-key'),
+				    parts     = reference.split('/');
+				status.show().text('Importing ' + reference);
+				if (useSockets()) {
+					socket.onmessage = function(result) {
+						result = JSON.parse(result.data);
+						importOne(result);
+						status.hide();
+					};
+					socket.send(JSON.stringify({module:parts[0],key:parts[1]}));
+				} else {
+					jQuery.getJSON('/' + reference, function(result) {
+						importOne(result);
+						status.hide();
 					});
 				}
+			});
+			// All at once
+			jQuery(document).on('click', 'a.import', function(click) {
+				jQuery('a.reference').each(function(click) {
+					var reference = jQuery(this).attr('data-key'),
+					    parts     = reference.split('/');
+					status.show().text('Importing ' + reference);
+					if (useSockets()) {
+						socket.onmessage = function(result) {
+							result = JSON.parse(result.data);
+							importOne(result);
+						};
+						socket.send(JSON.stringify({module:parts[0],key:parts[1]}));
+					} else {
+						jQuery.getJSON('/' + reference, importOne);
+					}
+				});
+			});
+			
+			/**********************************************************************************************************
+			 **************************************** Using Stored Data ***********************************************
+			 **********************************************************************************************************/
+			jQuery('#moduleList').on('change', function(event) {
+				var db,
+				    module = jQuery(this).val(),
+				    dbRequest = module && indexedDB.open(module, 1);
+				dbRequest.onsuccess = function(successEvent) {
+					var section = jQuery('#section'),
+					    sections = [];
+					db = dbRequest.result;
+					
+					db.transaction('entries').objectStore('entries').openCursor().onsuccess = function(event) {
+						var cursor = event.target.result,
+						    parts;
+						if (cursor) {
+							parts = cursor.key.split('.');
+							if (sections.indexOf(parts[0]) == -1) {
+								sections.push(parts[0]);
+							}
+							cursor.continue();
+						} else {
+							section.html('<option></option><option>' + sections.join('</option><option>') + '</option>');
+							jQuery('#key').html('');
+							jQuery('#text').html('');
+						}
+					};
+				}
+			});
+			jQuery('#section').on('change', function(event) {
+				var db,
+				    module = jQuery('#moduleList').val(),
+				    section = jQuery(this).val(),
+				    dbRequest = module && indexedDB.open(module, 1);
+				dbRequest.onsuccess = function(successEvent) {
+					var key = jQuery('#key'),
+					    keys = [];
+					db = dbRequest.result;
+					
+					db.transaction('entries').objectStore('entries').openCursor().onsuccess = function(event) {
+						var cursor = event.target.result,
+						    parts;
+						if (cursor) {
+							parts = cursor.key.split('.');
+							if (section == parts[0]) {
+								keys.push(cursor.key);
+							}
+							cursor.continue();
+						} else {
+							key.html('<option></option><option>' + keys.join('</option><option>') + '</option>');
+							jQuery('#text').html('');
+						}
+					};
+				}
+			});
+			jQuery('#key').on('change', function(event) {
+				var db,
+				    reference = jQuery(this).val(),
+				    module    = jQuery('#moduleList').val(),
+				    dbRequest = reference && module && indexedDB.open(module, 1);
+				dbRequest.onsuccess = function(successEvent) {
+					var request = dbRequest.result.transaction('entries').objectStore('entries').get(reference);
+					request.onsuccess = function(event) {
+						jQuery('#text').text(event.target.result.text);
+					};
+					request.onerror = function(event) {
+						jQuery('#text').html('<span style="color: red">No such value could be accessed.</span>');
+					};
+				};
 			});
 		});</script>
 	</head>
@@ -58,6 +250,16 @@
 		<input type="button" name="listModules" id="listModules" value="List Modules" />
 		
 		<br />
-		<div id="results"></div>
+		<div id="results" style="float: left; width: 49%"></div>
+		<div style="float: left; width: 49%">
+			<h4>Local Store</h4>
+			<span id="status" style="color: red"></span>
+			<div id="stored">
+				<select id="moduleList"></select>
+				<select id="section"></select>
+				<select id="key"></select>
+				<div id="text"></div>
+			</div>
+		</div>
 	</body>
 </html>
