@@ -188,7 +188,7 @@ public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 				String[] refParts = ref.getOsisID().split("\\.");
 				if (refParts.length == 0) {
 					System.out.println("Invalid key found: " + ref.getOsisID());
-				} else if (!refList.contains(refParts[0])) {
+				} else if (!refList.contains(refParts[0]) && !refParts[0].equalsIgnoreCase("intro")) {
 					refList.add(refParts[0]);
 				}
 			}
@@ -218,6 +218,7 @@ public class SwordHandler implements HttpHandler, WebSocketConnectionCallback {
 		
 		Books books = Books.installed();
 		for (Book book : books.getBooks()) {
+			if (book.getInitials().equalsIgnoreCase("ot1nt2")) continue;
 			module = new JSONObject();
 			module.put("name", book.getName());
 			module.put("key", book.getInitials());
